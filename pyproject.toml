@@ -1,0 +1,12 @@
+[project]
+name = "ecbrag"
+version = "1.0.0"
+description = "Production-grade RAG + agentic workflow over 500 ECB speeches"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
