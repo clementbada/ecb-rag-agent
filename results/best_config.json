@@ -1,0 +1,7 @@
+{
+  "variant": "B_fixed200_header",
+  "mode": "hybrid_rerank",
+  "selected_on": "dev",
+  "MRR": 0.91,
+  "nDCG@5": 0.8649
+}

@@ -23,6 +23,6 @@ def rag_answer(llm, retriever, question: str, k: int = 5) -> dict:
     tout = llm.meter.chat_out - meter_before[1]
     return {"question": question, "answer": res.content,
             "sources": [h["chunk_id"] for h in hits],
-            "contexts": {h["chunk_id"]: h["text"] for h in hits},
+            "contexts": {h["chunk_id"]: f"{h['speakers']} — {h['title']} ({h['date']})\n{h['text']}" for h in hits},
             "tokens_in": tin, "tokens_out": tout, "cost_usd": llm.meter.usd() - meter_before[2],
             "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}

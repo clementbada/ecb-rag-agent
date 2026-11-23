@@ -76,6 +76,10 @@ structured outputs, Langfuse (optional), Streamlit demo.
   retrieve a gold passage).
 * **Agent metrics:** success rate, mean iterations, tool calls, **hallucinated-tool-call rate**, tool-error rate,
   termination reason, **cost per answer** and **latency p50 / p95**. The agent is compared with a single-shot RAG baseline.
+* **Labelling fix (transparency):** the first test run showed question q37 was ambiguous: Frank Elderson
+  gave two NGFS membership figures in October 2024 (142 on 4 October, 141 at COP16 on 28 October). The agent
+  answered 142 with a correct citation and the scorer wrongly accepted it as 141. The question now names COP16,
+  and integer targets (counts, years) must match exactly.
 * **Security:** 5 prompt-injection attacks (3 direct, 2 indirect through poisoned passages injected into an in-memory
   copy of the index); success is detected with canary strings.
 

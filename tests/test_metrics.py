@@ -23,3 +23,9 @@ def test_gold_mapping_uses_span_overlap(small_index, docs):
     q = {"evidence": [{"doc_id": "ecb-003", "text": "1.7 times faster than ecosystems"}]}
     gold = gold_chunk_ids(q, small_index.chunks, {d["doc_id"]: d for d in docs})
     assert gold and all(g.startswith("ecb-003#") for g in gold)
+
+
+def test_integer_targets_match_exactly():
+    assert not is_correct("142 members", [["141"]])
+    assert is_correct("141 members", [["141"]])
+    assert is_correct("about 43.48%", [["43.5"]])

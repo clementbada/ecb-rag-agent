@@ -124,7 +124,7 @@ class Agent:
         res = self.llm.chat(state["messages"] + [{"role": "user", "content": FALLBACK_PROMPT}])
         answer = res.content or ("I could not complete the search within the allowed steps; "
                                  "the knowledge base evidence gathered so far is insufficient to answer.")
-        return {"answer": answer, "sources": sorted(self.tools.contexts)[:8], "terminated_by": reason,
+        return {"answer": answer, "sources": sorted(c for c in self.tools.contexts if "#" in c)[:8], "terminated_by": reason,
                 "tokens_in": state["tokens_in"] + res.tokens_in,
                 "tokens_out": state["tokens_out"] + res.tokens_out,
                 "trace": state["trace"] + [{"type": "llm", "iteration": "fallback", "tokens_in": res.tokens_in,

@@ -159,7 +159,8 @@ class ToolBox:
                     ". Try broader keywords, remove or widen a filter, or check the speaker with list_speeches.")
         for h in hits:
             self.seen_ids.update({h["chunk_id"], h["doc_id"]})
-            self.contexts[h["chunk_id"]] = h["text"]
+            # metadata travels with the text so the faithfulness judge can verify "who / when"
+            self.contexts[h["chunk_id"]] = f"{h['speakers']} — {h['title']} ({h['date']})\n{h['text']}"
         return "\n\n".join(wrap_document(h) for h in hits)
 
     def list_speeches(self, speaker: str | None = None, date_from: str | None = None,
@@ -177,12 +178,16 @@ class ToolBox:
         head = f"{len(rows)} speech(es) match (catalogue covers {self.docs[0]['date']} to {self.docs[-1]['date']})."
         if group_by_speaker:
             counts = Counter(s.strip() for d in rows for s in d["speakers"].split(","))
-            return head + "\nSpeeches per speaker:\n" + "\n".join(f"- {s}: {n}" for s, n in counts.most_common())
+            out = head + "\nSpeeches per speaker:\n" + "\n".join(f"- {s}: {n}" for s, n in counts.most_common())
+            self.contexts[f"catalogue:{len(self.contexts)}"] = out
+            return out
         rows = sorted(rows, key=lambda d: d["date"], reverse=True)[:limit]
         for d in rows:
             self.seen_ids.add(d["doc_id"])
         listing = "\n".join(f"- {d['doc_id']} | {d['date']} | {d['speakers']} | {d['title']}" for d in rows)
-        return f"{head} Most recent first:\n{listing}"
+        out = f"{head} Most recent first:\n{listing}"
+        self.contexts[f"catalogue:{len(self.contexts)}"] = out
+        return out
 
     def calculator(self, expression: str) -> str:
         value = safe_eval(expression)
@@ -190,6 +195,7 @@ class ToolBox:
             value = round(value, 10)
             if value.is_integer():
                 value = int(value)
+        self.contexts[f"calc:{len(self.contexts)}"] = f"Calculator result: {expression} = {value}"
         return str(value)
 
     def final_answer(self, answer: str, sources: list[str]) -> str:

@@ -97,7 +97,8 @@ def _is_number(s: str) -> bool:
 
 def is_correct(answer: str, must: list[list[str]], tol: float = 0.01) -> bool:
     """Correct if EVERY group is satisfied; a group is satisfied if ANY alternative appears.
-    Numeric alternatives match any number in the answer within `tol` (relative);
+    Integer alternatives (counts, years) must match exactly; decimal alternatives match any
+    number in the answer within `tol` (relative);
     text alternatives match as case-insensitive substrings."""
     if not answer:
         return False
@@ -108,7 +109,7 @@ def is_correct(answer: str, must: list[list[str]], tol: float = 0.01) -> bool:
         for alt in group:
             if _is_number(alt):
                 target = float(alt)
-                eps = max(abs(target) * tol, 1e-9)
+                eps = 1e-9 if "." not in alt else max(abs(target) * tol, 1e-9)
                 ok = any(abs(n - target) <= eps for n in nums)
             else:
                 ok = alt.lower() in low
