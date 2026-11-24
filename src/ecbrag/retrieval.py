@@ -70,7 +70,10 @@ class Retriever:
         blocks = []
         for n, i in enumerate(row_ids, start=1):
             c = self.index.chunks[i]
-            blocks.append(f"[{n}] ({c['speakers']}, {c['date']}, \"{c['title']}\")\n{c['text'][:700]}")
+            # The whole passage: with a 700-char cut, the evidence of 18/41 golden facts sat
+            # after the cut in every gold chunk of variant C, so the reranker could not see it.
+            text = c["text"][:config.RERANK_MAX_CHARS]
+            blocks.append(f"[{n}] ({c['speakers']}, {c['date']}, \"{c['title']}\")\n{text}")
         user = f"Question: {query}\n\nCandidates:\n\n" + "\n\n".join(blocks)
         verdict = self.llm.chat_parse([{"role": "system", "content": RERANK_SYSTEM},
                                        {"role": "user", "content": user}], RerankVerdict)

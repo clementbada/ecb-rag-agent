@@ -49,6 +49,7 @@ RETRIEVAL_MODES = ["dense", "bm25", "hybrid", "hybrid_rerank"]
 # --- Retrieval / agent defaults ------------------------------------------------------
 TOP_K = 5
 CANDIDATE_POOL = 20  # retrieve wide (BM25 + dense), then rerank to TOP_K
+RERANK_MAX_CHARS = 2000  # per candidate; chunks are ~1.3-1.5k chars, so the reranker reads them whole
 RRF_K = 60
 MAX_ITERATIONS = 8
 MAX_RUN_TOKENS = 60_000  # hard token budget per agent run
