@@ -75,6 +75,31 @@ def hit_at_k(ranked_docs: list[str], gold_docs: set[str], k: int) -> float:
 # ---------------------------------------------------------------------------------------
 
 NUM = re.compile(r"[-+−]?\d[\d,]*(?:\.\d+)?")
+# Source ids such as ecb-317#c4 or ecb-445: their digits are not facts and must never
+# satisfy a numeric target (citing chunk c5 is not answering "5%").
+SOURCE_ID = re.compile(r"\becb-\d+(?:#c\d+)?", re.IGNORECASE)
+EMPTY_BRACKETS = re.compile(r"\[[\s,;]*\]")
+
+# Explicit "the knowledge base does not have it" statements. A bare "not" is NOT enough:
+# "inflation was not a concern" is a (possibly hallucinated) answer, not a refusal.
+REFUSAL = re.compile(
+    r"(not|n't) (be )?(found|contained|available|covered|mentioned|included|present|addressed)"
+    r"|\bnot (in|part of|covered by) the (knowledge base|speeches|corpus|catalogue|retrieved)"
+    r"|(does|do|did)( not|n't) (contain|include|mention|cover|address|provide|say|report)"
+    r"|\bno (such|information|speech|speeches|passage|passages|record|mention|evidence|data|relevant)\b"
+    r"|(cannot|can't|could not|couldn't|unable to) (find|answer|locate|identify|confirm|determine|produce a sourced)"
+    r"|outside (the )?(scope|coverage|period)|beyond the (knowledge base|period|coverage)",
+    re.IGNORECASE)
+
+
+def strip_citations(text: str) -> str:
+    """Remove source ids (and the brackets they leave behind) before scoring an answer."""
+    return EMPTY_BRACKETS.sub(" ", SOURCE_ID.sub(" ", text or ""))
+
+
+def is_refusal(answer: str) -> bool:
+    """True when the answer explicitly says the knowledge base does not contain the answer."""
+    return bool(REFUSAL.search(strip_citations(answer)))
 
 
 def _numbers(text: str) -> list[float]:
@@ -99,9 +124,11 @@ def is_correct(answer: str, must: list[list[str]], tol: float = 0.01) -> bool:
     """Correct if EVERY group is satisfied; a group is satisfied if ANY alternative appears.
     Integer alternatives (counts, years) must match exactly; decimal alternatives match any
     number in the answer within `tol` (relative);
-    text alternatives match as case-insensitive substrings."""
+    text alternatives match as case-insensitive substrings.
+    Source ids ([ecb-317#c4]) are stripped first, so citation digits never count."""
     if not answer:
         return False
+    answer = strip_citations(answer)
     low = answer.lower()
     nums = _numbers(answer)
     for group in must:
@@ -118,6 +145,14 @@ def is_correct(answer: str, must: list[list[str]], tol: float = 0.01) -> bool:
         if not ok:
             return False
     return True
+
+
+def score_answer(answer: str, question: dict) -> bool:
+    """Correctness for one golden question. Unanswerable questions need an explicit refusal
+    (the substring list in `must` is too lax for them); every other type uses `must`."""
+    if question.get("type") == "unanswerable":
+        return is_refusal(answer)
+    return is_correct(answer, question["must"])
 
 
 # ---------------------------------------------------------------------------------------

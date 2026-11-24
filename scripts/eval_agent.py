@@ -24,7 +24,7 @@ from ecbrag import config  # noqa: E402
 from ecbrag.agent.graph import build_agent  # noqa: E402
 from ecbrag.corpus import load_corpus, load_golden, write_jsonl  # noqa: E402
 from ecbrag.generation import rag_answer  # noqa: E402
-from ecbrag.metrics import faithfulness, gold_chunk_ids, is_correct  # noqa: E402
+from ecbrag.metrics import faithfulness, gold_chunk_ids, score_answer  # noqa: E402
 from ecbrag.reporting import mean, pct, save_table  # noqa: E402
 from ecbrag.tracing import flush, traced  # noqa: E402
 
@@ -36,7 +36,7 @@ def score(llm, q, run, chunks, docs_by_id, judge: bool) -> dict:
     if judge and q["type"] not in ("unanswerable", "metadata") and run["contexts"]:
         faith = faithfulness(llm, run["answer"], list(run["contexts"].values()))
     return {
-        "correct": float(is_correct(run["answer"], q["must"])),
+        "correct": float(score_answer(run["answer"], q)),
         "faithfulness": faith,
         "evidence_recall": (len(retrieved & gold) > 0) if gold else None,
         "cited": bool(run.get("sources")),
