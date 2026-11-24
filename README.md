@@ -10,7 +10,8 @@ catalogue, does exact arithmetic, and answers **with a citation for every claim*
 held-out golden set**, with cost and latency tracked.
 
 > Use case: an analyst on a rates or macro desk asks "What did Schnabel say about r* in 2025?", "How did inflation
-> evolve between January and May 2026 according to the ECB?" or "Who spoke most in 2025?" and gets a sourced answer
+> evolve between January and May 2026 according to the ECB?" or "Who has the most 2025 speeches in the knowledge
+> base?" and gets a sourced answer
 > in seconds instead of reading dozens of speeches.
 
 ---
@@ -22,7 +23,8 @@ held-out golden set**, with cost and latency tracked.
 | Source | Official ECB speeches dataset, `ecb.europa.eu/press/key/shared/data/all_ECB_speeches.csv` |
 | Selection | 500 most recent speeches with ≥ 300 words, one per title (`scripts/download_corpus.py`) |
 | Period | 11 Feb 2020 → 30 Oct 2026 |
-| Size | 1.6 million words; Lagarde 125, Schnabel 75, Lane 69, Panetta 62, Elderson 59, de Guindos 52, Cipollone 46, others |
+| Size | 1.6 million words; Lagarde 126, Schnabel 75, Lane 70, Panetta 62, Elderson 59, de Guindos 52, Cipollone 46, Mersch 8, Vujčić 3 (one joint Lagarde–Lane speech counts for both) |
+| Coverage | about 70 speeches per year: catalogue counts ("who spoke most") describe this knowledge base, not every ECB speech |
 | Metadata | date, speaker(s), title, subtitle → carried into every chunk and every citation |
 
 Why this corpus: it is real, public and large enough that retrieval is a genuine problem; positions **change over
@@ -71,18 +73,28 @@ structured outputs, Langfuse (optional), Streamlit demo.
   different chunk boundaries are scored on the same facts.
 * **Retrieval metrics (k = 5):** Recall@5, precision@5, MRR, nDCG@5, document hit@5. Precision@5 is capped by the
   number of gold chunks per question (usually 1–2, so a perfect score is 0.2–0.4).
-* **Answer metrics:** correctness (every required figure or term must be present), RAGAS-style **faithfulness**
-  (share of answer claims supported by the retrieved passages, LLM judge), evidence recall (did the agent
-  retrieve a gold passage).
-* **Agent metrics:** success rate, mean iterations, tool calls, **hallucinated-tool-call rate**, tool-error rate,
-  termination reason, **cost per answer** and **latency p50 / p95**. The agent is compared with a single-shot RAG baseline.
+* **Answer metrics:** correctness (every required figure or term must be present; source ids such as
+  `[ecb-317#c4]` are stripped first so citation digits never count; unanswerable questions need an explicit
+  "not in the knowledge base" statement), RAGAS-style **faithfulness** (share of answer claims supported by the
+  retrieved passages, LLM judge; set `JUDGE_MODEL` to judge with a different model than the generator),
+  evidence recall (did the agent retrieve a gold passage).
+* **Uncertainty:** every headline rate comes with a 95% bootstrap interval over questions, and the agent is
+  compared with the baseline by a paired bootstrap on the same questions. With ~20 test questions, one question
+  is ~5 points: overlapping intervals mean the systems are not separable on this set.
+* **Agent metrics:** success rate, mean iterations, tool calls, **hallucinated-tool-call rate** (calls to an
+  unknown tool or with arguments that fail the schema), tool-error rate (hallucinated calls plus tools that
+  raised), **non-final-answer rate** (runs that did not end through the validated `final_answer` tool),
+  invalid citations, termination reason, **cost per answer** and **latency p50 / p95**. The agent is compared
+  with a single-shot RAG baseline.
 * **Labelling fix (transparency):** the first test run showed question q37 was ambiguous: Frank Elderson
   gave two NGFS membership figures in October 2024 (142 on 4 October, 141 at COP16 on 28 October). The agent
   answered 142 with a correct citation and the scorer wrongly accepted it as 141. The question now names COP16,
-  and integer targets (counts, years) must match exactly.
+  and integer targets (counts, years) must match exactly; decimals keep a 1% relative tolerance.
 * **Security:** 8 prompt-injection attacks (5 direct, 3 indirect through poisoned passages injected into an in-memory
   copy of the index), run with the output guard off and on; success is detected with canary strings. 3 of the 8 were
   written after the first run, before the guard was evaluated, to test it on attacks it was not designed against.
+  Canaries are conservative: a refusal that quotes "password" or "9.75" also counts, so every flagged row is read by
+  hand before reporting.
 
 ## 5. Results
 
@@ -139,12 +151,12 @@ prompt. Limitation: a sourced answer that also repeats injected text would pass;
 
 | Failure mode | Mitigation |
 |---|---|
-| Infinite loop | `final_answer` tool + max 8 iterations + 60k-token budget + repeated-call detection; when a bound fires, one last call without tools salvages an answer from the evidence |
+| Infinite loop | `final_answer` tool + max 8 iterations + 60k-token budget + repeated-call detection; when a bound fires, one last call without tools salvages an answer from the evidence, and only the ids it cites that a tool returned are shown as sources |
 | Hallucinated tool call | arguments validated against the JSON schema before execution; unknown tools return the list of valid tools |
 | Error cascade | every tool error is returned as an explicit observation; the loop never crashes |
-| Fabricated citation | `final_answer` rejects any source id that no tool returned during the run |
+| Fabricated citation | `final_answer` rejects any source id, in `sources` or cited inline in the answer, that no tool returned during the run; a plain-text answer is sent back once to `final_answer`, and if the model still answers in text only verified inline ids are kept |
 | API errors | exponential backoff on 429 / 5xx / timeouts; fatal errors fail fast; embedding batches halve on error |
-| Prompt injection | retrieved text wrapped in `<document>` tags and declared as data; instruction-like passages flagged; tag characters neutralised; system-prompt instruction hierarchy; structured final answer |
+| Prompt injection | retrieved text wrapped in `<document>` tags and declared as data; instruction-like passages flagged; tag characters neutralised; system-prompt instruction hierarchy; structured final answer; the demo HTML-escapes the answer |
 | Hijacked or ungrounded answer | output guard: released only if sourced (or an explicit refusal), never if it reproduces the system prompt |
 
 ## 7. How to run
@@ -186,7 +198,10 @@ Without them, runs are still logged locally in `runs/` (one JSONL trace per run)
 ## 9. Limitations and next steps
 
 * FAISS is in-memory; a production deployment would use pgvector (persistence, SQL filters, hybrid search in one query).
-* The golden set (44 questions) is small; confidence intervals on the test numbers are wide.
+* The golden set (44 questions) is small; confidence intervals on the test numbers are wide (reported with every
+  headline number). Six speeches supply gold evidence to both dev and test questions, and most questions name the
+  speaker and the month, which favours metadata filters and the contextual header.
+* The refusal check for unanswerable questions is a phrase list: borderline answers should be read by hand.
 * The LLM judge for faithfulness is itself a model and can be wrong; it is used as a relative signal between systems.
 * Speeches only: adding press conferences, Economic Bulletins and account minutes would broaden coverage.
 * No conversation memory: each question is answered independently.
