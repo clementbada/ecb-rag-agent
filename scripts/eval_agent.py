@@ -69,6 +69,7 @@ def main() -> None:
                      "hallucinated_calls": run["hallucinated_calls"], "tool_errors": run["tool_errors"],
                      "repeated_calls": run["repeated_calls"], "terminated_by": run["terminated_by"],
                      "guard": run.get("guard", "off"),
+                     "nudged": run["nudged"], "invalid_citations": run["invalid_citations"],
                      "tokens": run["tokens_in"] + run["tokens_out"], "cost_usd": run["cost_usd"],
                      "latency_ms": run["latency_ms"], "answer": run["answer"][:300]})
         runs.append({"id": q["id"], **run})
@@ -84,6 +85,7 @@ def main() -> None:
             rows.append({"system": "rag_baseline", "id": q["id"], "type": q["type"], **sb,
                          "iterations": 1, "tool_calls": 0, "hallucinated_calls": 0, "tool_errors": 0,
                          "repeated_calls": 0, "terminated_by": "single_shot", "guard": "n/a",
+                         "nudged": False, "invalid_citations": 0,
                          "tokens": base["tokens_in"] + base["tokens_out"], "cost_usd": base["cost_usd"],
                          "latency_ms": (time.perf_counter() - t0) * 1000, "answer": base["answer"][:300]})
     flush()
@@ -102,6 +104,9 @@ def main() -> None:
             "hallucinated_call_rate": (g["hallucinated_calls"].sum() / calls) if calls else 0.0,
             "tool_error_rate": (g["tool_errors"].sum() / calls) if calls else 0.0,
             "guard_blocked": int(g["guard"].astype(str).str.startswith("blocked").sum()),
+            # share of runs that did not end through the validated final_answer tool
+            "non_final_answer_rate": float((~g["terminated_by"].isin(["final_answer", "single_shot"])).mean()),
+            "invalid_citations": int(g["invalid_citations"].sum()),
             "cost_per_answer_usd": g["cost_usd"].mean(),
             "latency_p50_s": pct(g["latency_ms"], 50) / 1000,
             "latency_p95_s": pct(g["latency_ms"], 95) / 1000,

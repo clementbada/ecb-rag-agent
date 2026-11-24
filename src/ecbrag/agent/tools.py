@@ -17,6 +17,16 @@ from ..corpus import fold
 from ..guardrails import wrap_document
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A source id as cited inline: ecb-445#c3 (chunk) or ecb-445 (whole speech).
+SOURCE_ID_RE = re.compile(r"\becb-\d+(?:#c\d+)?\b")
+
+
+def cited_ids(text: str) -> list[str]:
+    """Source ids cited inline in an answer, in order of first appearance."""
+    seen: dict[str, None] = {}
+    for m in SOURCE_ID_RE.findall(text or ""):
+        seen.setdefault(m, None)
+    return list(seen)
 
 TOOL_SCHEMAS: list[dict] = [
     {"type": "function", "function": {
@@ -201,12 +211,21 @@ class ToolBox:
         return str(value)
 
     def final_answer(self, answer: str, sources: list[str]) -> str:
-        unknown = [s for s in sources if s not in self.seen_ids]
+        # Check the `sources` list AND every id cited inline in the answer text: a fabricated
+        # [ecb-999#c7] written in the answer must be rejected even if `sources` is clean.
+        inline = cited_ids(answer)
+        unknown = [s for s in dict.fromkeys(list(sources) + inline) if s not in self.seen_ids]
         if unknown:
             raise ValueError("these sources were not returned by any tool in this run: "
                              + ", ".join(unknown[:5]) + ". Cite only ids you actually retrieved.")
-        self.final = {"answer": answer, "sources": sources}
+        # sources = what the model listed + anything it cited inline but forgot to list
+        self.final = {"answer": answer, "sources": list(dict.fromkeys(list(sources) + inline))}
         return "Final answer recorded."
+
+    def verified_citations(self, text: str) -> tuple[list[str], list[str]]:
+        """Split the ids cited in `text` into (returned by a tool this run, never returned)."""
+        ids = cited_ids(text)
+        return [i for i in ids if i in self.seen_ids], [i for i in ids if i not in self.seen_ids]
 
     # -- dispatch ----------------------------------------------------------------------------
     def classify(self, name: str, arguments_json: str) -> str:
