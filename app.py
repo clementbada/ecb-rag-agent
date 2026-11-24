@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 
@@ -12,7 +13,12 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from ecbrag import config  # noqa: E402
-from ecbrag.agent.graph import build_agent  # noqa: E402
+from ecbrag.agent.graph import Agent  # noqa: E402
+from ecbrag.agent.tools import ToolBox  # noqa: E402
+from ecbrag.corpus import load_corpus  # noqa: E402
+from ecbrag.index import HybridIndex  # noqa: E402
+from ecbrag.llm import LLM  # noqa: E402
+from ecbrag.retrieval import Retriever  # noqa: E402
 from ecbrag.tracing import flush, traced  # noqa: E402
 
 st.set_page_config(page_title="ECB Speeches Analyst", layout="wide")
@@ -30,22 +36,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+cfg = config.best_config()
+
+
 @st.cache_resource(show_spinner="Loading index")
-def get_agent():
-    return build_agent()
+def get_index_and_docs():
+    """Shared by every session: read-only after loading."""
+    return HybridIndex.load(cfg["variant"]), load_corpus()
+
+
+def get_agent() -> Agent:
+    """One agent per browser session. The ToolBox keeps per-run state (sources seen,
+    contexts, final answer), so a single shared agent would mix concurrent users' runs."""
+    if "agent" not in st.session_state:
+        index, docs = get_index_and_docs()
+        llm = LLM()
+        st.session_state.agent = Agent(llm, ToolBox(Retriever(index, llm, cfg["mode"]), docs))
+    return st.session_state.agent
 
 
 agent = get_agent()
-cfg = config.best_config()
 
 st.markdown('<div class="kicker">Knowledge base · 500 ECB speeches · 2020 – 2026</div>', unsafe_allow_html=True)
 st.title("ECB Speeches Analyst")
-st.caption(f"Retrieval: {cfg['mode']} on index {cfg['variant']} · Model: {config.CHAT_MODEL}")
+st.caption(f"Retrieval: {cfg['mode']} on index {cfg['variant']} · Model: {config.CHAT_MODEL} · "
+           "Counts refer to the 500 speeches in the knowledge base, not to every ECB speech.")
 
 examples = [
     "What share of day-to-day transactions in the euro area was made in cash in 2025?",
     "How did euro area headline inflation change between January and May 2026?",
-    "Which ECB speaker gave the most speeches in 2025?",
+    "Which ECB speaker has the most speeches dated 2025 in the knowledge base?",
     "What has Frank Elderson said about nature-related risks for banks?",
 ]
 choice = st.selectbox("Example questions", [""] + examples)
@@ -56,7 +76,9 @@ if st.button("Ask", type="primary") and question.strip():
         run = traced(agent.run, "agent-run")(question.strip())
         flush()
 
-    st.markdown(f'<div class="answer">{run["answer"]}</div>', unsafe_allow_html=True)
+    # The answer is model output that may echo retrieved text: escape it before rendering as HTML.
+    answer_html = html.escape(run["answer"]).replace("\n", "<br>")
+    st.markdown(f'<div class="answer">{answer_html}</div>', unsafe_allow_html=True)
     st.write("")
 
     cols = st.columns(5)
@@ -72,7 +94,7 @@ if st.button("Ask", type="primary") and question.strip():
     docs = {d["doc_id"]: d for d in agent.tools.docs}
     rows = []
     for s in run["sources"]:
-        meta = chunks.get(s) or docs.get(s) or {}
+        meta = chunks.get(s) or docs.get(s) or {}  # rendered by st.dataframe: no HTML injection
         rows.append({"id": s, "speaker": meta.get("speakers", ""), "date": meta.get("date", ""),
                      "title": meta.get("title", "")})
     if rows:
