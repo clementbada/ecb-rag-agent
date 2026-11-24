@@ -28,6 +28,9 @@ BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "mistralai/mistral-small-2603")  # Mistral Small 4
 EMBED_MODEL = os.getenv("EMBED_MODEL", "mistralai/mistral-embed-2312")  # 1024 dims
 EMBED_DIM = 1024
+# LLM judge for faithfulness. Defaults to the chat model; set JUDGE_MODEL to another model
+# (e.g. another provider's small model) so the generator is not grading its own answers.
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", CHAT_MODEL)
 # Pin the Mistral provider on OpenRouter so the price table below stays exact.
 PROVIDER_ROUTING = {"provider": {"order": ["Mistral"]}}
 

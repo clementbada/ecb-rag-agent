@@ -25,16 +25,17 @@ from ecbrag.agent.graph import build_agent  # noqa: E402
 from ecbrag.corpus import load_corpus, load_golden, write_jsonl  # noqa: E402
 from ecbrag.generation import rag_answer  # noqa: E402
 from ecbrag.metrics import faithfulness, gold_chunk_ids, score_answer  # noqa: E402
-from ecbrag.reporting import mean, pct, save_table  # noqa: E402
+from ecbrag.llm import LLM  # noqa: E402
+from ecbrag.reporting import bootstrap_ci, fmt_ci, mean, paired_bootstrap_diff, pct, save_table  # noqa: E402
 from ecbrag.tracing import flush, traced  # noqa: E402
 
 
-def score(llm, q, run, chunks, docs_by_id, judge: bool) -> dict:
+def score(judge_llm, q, run, chunks, docs_by_id, judge: bool) -> dict:
     gold = gold_chunk_ids(q, chunks, docs_by_id) if q["evidence"] else set()
     retrieved = set(run["contexts"])
     faith = None
     if judge and q["type"] not in ("unanswerable", "metadata") and run["contexts"]:
-        faith = faithfulness(llm, run["answer"], list(run["contexts"].values()))
+        faith = faithfulness(judge_llm, run["answer"], list(run["contexts"].values()))
     return {
         "correct": float(score_answer(run["answer"], q)),
         "faithfulness": faith,
@@ -53,6 +54,8 @@ def main() -> None:
 
     agent = build_agent()
     llm = agent.llm
+    # separate client (and meter) for the judge, so judge spend never counts as answer cost
+    judge_llm = llm if config.JUDGE_MODEL == config.CHAT_MODEL else LLM(chat_model=config.JUDGE_MODEL)
     chunks = agent.tools.retriever.index.chunks
     docs_by_id = {d["doc_id"]: d for d in load_corpus()}
     questions = load_golden(args.split)[: args.limit]
@@ -63,7 +66,7 @@ def main() -> None:
     rows, runs = [], []
     for q in questions:
         run = run_agent(q["question"])
-        s = score(llm, q, run, chunks, docs_by_id, not args.no_judge)
+        s = score(judge_llm, q, run, chunks, docs_by_id, not args.no_judge)
         rows.append({"system": "agent", "id": q["id"], "type": q["type"], **s,
                      "iterations": run["iterations"], "tool_calls": run["tool_calls"],
                      "hallucinated_calls": run["hallucinated_calls"], "tool_errors": run["tool_errors"],
@@ -81,7 +84,7 @@ def main() -> None:
         if args.baseline:
             t0 = time.perf_counter()
             base = rag_answer(llm, agent.tools.retriever, q["question"])
-            sb = score(llm, q, base, chunks, docs_by_id, not args.no_judge)
+            sb = score(judge_llm, q, base, chunks, docs_by_id, not args.no_judge)
             rows.append({"system": "rag_baseline", "id": q["id"], "type": q["type"], **sb,
                          "iterations": 1, "tool_calls": 0, "hallucinated_calls": 0, "tool_errors": 0,
                          "repeated_calls": 0, "terminated_by": "single_shot", "guard": "n/a",
@@ -97,7 +100,9 @@ def main() -> None:
         summary.append({
             "system": system, "n": len(g),
             "success_rate": g["correct"].mean(),
+            "success_ci95": fmt_ci(bootstrap_ci(g["correct"].tolist())),
             "faithfulness": mean(g["faithfulness"].tolist()),
+            "faithfulness_ci95": fmt_ci(bootstrap_ci(g["faithfulness"].tolist())),
             "evidence_recall": mean([float(x) for x in g["evidence_recall"] if x is not None]),
             "mean_iterations": g["iterations"].mean(),
             "mean_tool_calls": g["tool_calls"].mean(),
@@ -112,19 +117,33 @@ def main() -> None:
             "latency_p95_s": pct(g["latency_ms"], 95) / 1000,
         })
     sdf = pd.DataFrame(summary)
+    paired = ""
+    if args.baseline:
+        a = df[df.system == "agent"].set_index("id")
+        b = df[df.system == "rag_baseline"].set_index("id").reindex(a.index)
+        lines = []
+        for metric in ("correct", "faithfulness"):
+            r = paired_bootstrap_diff(a[metric].tolist(), b[metric].tolist())
+            lines.append(f"{metric}: agent - baseline = {r['diff']:+.2f}, 95% CI [{r['ci_low']:+.2f}, "
+                         f"{r['ci_high']:+.2f}] over {r['n']} questions")
+        paired = " Paired bootstrap: " + "; ".join(lines) + ". If a CI contains 0, the gap is not established."
+        print(paired.strip())
     by_type = (df.groupby(["system", "type"])["correct"].mean().unstack(0).reset_index()
                .rename(columns={"type": "question type"}))
     term = Counter(df[df.system == "agent"]["terminated_by"])
     note = (f"Split: **{args.split}** (held-out unless dev). Index: `{cfg['variant']}`, retrieval: `{cfg['mode']}`, "
             f"model: `{config.CHAT_MODEL}`. Termination: {dict(term)}. Cost includes agent calls, reranking and "
-            "query embeddings. Faithfulness = share of answer claims supported by retrieved passages (LLM judge).")
+            "query embeddings. Faithfulness = share of answer claims supported by retrieved passages (LLM judge: "
+            f"`{config.JUDGE_MODEL}`). CIs: 95% percentile bootstrap over questions." + paired)
     save_table(sdf, config.RESULTS_DIR / f"agent_{args.split}", "Agent evaluation", note)
     save_table(by_type, config.RESULTS_DIR / f"agent_{args.split}_by_type", "Success rate by question type")
     save_table(df, config.RESULTS_DIR / f"agent_{args.split}_per_question", "Agent per question")
     config.RUNS_DIR.mkdir(exist_ok=True)
     write_jsonl(config.RUNS_DIR / f"agent_{args.split}_{time.strftime('%Y%m%d_%H%M%S')}.jsonl", runs)
     print(sdf.to_string(index=False))
-    print(f"Total spend this evaluation: ${llm.meter.usd():.4f}")
+    judge_usd = judge_llm.meter.usd() if judge_llm is not llm else 0.0
+    print(f"Total spend this evaluation: ${llm.meter.usd() + judge_usd:.4f}"
+          + (f" (judge ${judge_usd:.4f}, priced with the chat-model table: approximate)" if judge_usd else ""))
 
 
 if __name__ == "__main__":

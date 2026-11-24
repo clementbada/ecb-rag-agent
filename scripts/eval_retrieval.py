@@ -23,7 +23,7 @@ from ecbrag.corpus import load_corpus, load_golden  # noqa: E402
 from ecbrag.index import HybridIndex  # noqa: E402
 from ecbrag.llm import LLM  # noqa: E402
 from ecbrag.metrics import gold_chunk_ids, hit_at_k, mrr, ndcg_at_k, precision_at_k, recall_at_k  # noqa: E402
-from ecbrag.reporting import mean, pct, save_table  # noqa: E402
+from ecbrag.reporting import bootstrap_ci, fmt_ci, mean, pct, save_table  # noqa: E402
 from ecbrag.retrieval import Retriever  # noqa: E402
 
 K = 5
@@ -68,6 +68,7 @@ def main() -> None:
                 f"recall@{K}": mean(r[f"recall@{K}"] for r in rows),
                 f"precision@{K}": mean(r[f"precision@{K}"] for r in rows),
                 "MRR": mean(r["mrr"] for r in rows),
+                "MRR_ci95": fmt_ci(bootstrap_ci([r["mrr"] for r in rows])),
                 f"nDCG@{K}": mean(r[f"ndcg@{K}"] for r in rows),
                 f"doc_hit@{K}": mean(r[f"doc_hit@{K}"] for r in rows),
                 "latency_p50_ms": pct(lat, 50), "cost_per_query_usd": (llm.meter.usd() - usd0) / max(n, 1),
@@ -80,7 +81,9 @@ def main() -> None:
     df = pd.DataFrame(summary)
     note = (f"Split: **{args.split}** ({len(questions)} questions with gold evidence). k = {K}. "
             "Gold chunks = chunks covering at least 50% of a hand-verified evidence span, so variants with "
-            "different chunk boundaries are scored on the same facts. Cost includes query embedding and rerank calls.")
+            "different chunk boundaries are scored on the same facts. Cost includes query embedding and rerank calls. "
+            "MRR_ci95: 95% bootstrap interval over questions; configs whose intervals overlap are not "
+            "separable on this set.")
     save_table(df, config.RESULTS_DIR / f"retrieval_{args.split}", "Retrieval scorecard", note)
     save_table(pd.DataFrame(per_q), config.RESULTS_DIR / f"retrieval_{args.split}_per_question",
                "Retrieval per question")
