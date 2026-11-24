@@ -78,3 +78,4 @@ stateDiagram-v2
 | Empty retrieval | "No passage matched" observation | guidance to widen filters or check the speaker with `list_speeches` |
 | API hiccups (429, 5xx, timeouts) | exceptions with status code | exponential backoff (5 attempts); fatal codes fail fast; embedding batches halve on error |
 | Prompt injection | detector flag, canary strings in the security test | document tags, instruction hierarchy, structured final answer, citation whitelist |
+| Ungrounded or hijacked answer | output guard verdict (`blocked:ungrounded`, `blocked:prompt_leak`) | post-generation check: an answer is released only if it cites sources returned by tools (or the catalogue) or is an explicit refusal, and never if it reproduces the system prompt |

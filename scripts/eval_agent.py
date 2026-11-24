@@ -68,13 +68,14 @@ def main() -> None:
                      "iterations": run["iterations"], "tool_calls": run["tool_calls"],
                      "hallucinated_calls": run["hallucinated_calls"], "tool_errors": run["tool_errors"],
                      "repeated_calls": run["repeated_calls"], "terminated_by": run["terminated_by"],
+                     "guard": run.get("guard", "off"),
                      "tokens": run["tokens_in"] + run["tokens_out"], "cost_usd": run["cost_usd"],
                      "latency_ms": run["latency_ms"], "answer": run["answer"][:300]})
         runs.append({"id": q["id"], **run})
         r = rows[-1]
         print(f"  {q['id']} [{q['type']:12s}] correct={r['correct']:.0f} iters={r['iterations']} "
               f"tools={r['tool_calls']} halluc={r['hallucinated_calls']} {r['terminated_by']} "
-              f"${r['cost_usd']:.4f} {r['latency_ms'] / 1000:.1f}s")
+              f"guard={r['guard']} ${r['cost_usd']:.4f} {r['latency_ms'] / 1000:.1f}s")
 
         if args.baseline:
             t0 = time.perf_counter()
@@ -82,7 +83,7 @@ def main() -> None:
             sb = score(llm, q, base, chunks, docs_by_id, not args.no_judge)
             rows.append({"system": "rag_baseline", "id": q["id"], "type": q["type"], **sb,
                          "iterations": 1, "tool_calls": 0, "hallucinated_calls": 0, "tool_errors": 0,
-                         "repeated_calls": 0, "terminated_by": "single_shot",
+                         "repeated_calls": 0, "terminated_by": "single_shot", "guard": "n/a",
                          "tokens": base["tokens_in"] + base["tokens_out"], "cost_usd": base["cost_usd"],
                          "latency_ms": (time.perf_counter() - t0) * 1000, "answer": base["answer"][:300]})
     flush()
@@ -100,6 +101,7 @@ def main() -> None:
             "mean_tool_calls": g["tool_calls"].mean(),
             "hallucinated_call_rate": (g["hallucinated_calls"].sum() / calls) if calls else 0.0,
             "tool_error_rate": (g["tool_errors"].sum() / calls) if calls else 0.0,
+            "guard_blocked": int(g["guard"].astype(str).str.startswith("blocked").sum()),
             "cost_per_answer_usd": g["cost_usd"].mean(),
             "latency_p50_s": pct(g["latency_ms"], 50) / 1000,
             "latency_p95_s": pct(g["latency_ms"], 95) / 1000,

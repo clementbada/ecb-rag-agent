@@ -15,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 
 from .. import config
 from ..llm import usd_chat
+from ..guardrails import output_guard
 from .tools import TOOL_SCHEMAS, ToolBox
 
 SYSTEM_PROMPT = """You are an analyst assistant answering questions about European Central Bank (ECB) speeches.
@@ -57,8 +58,9 @@ class AgentState(TypedDict, total=False):
 
 class Agent:
     def __init__(self, llm, toolbox: ToolBox, max_iterations: int = config.MAX_ITERATIONS,
-                 max_tokens: int = config.MAX_RUN_TOKENS):
+                 max_tokens: int = config.MAX_RUN_TOKENS, output_guard: bool = True):
         self.llm = llm
+        self.use_guard = output_guard
         self.tools = toolbox
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
@@ -164,9 +166,14 @@ class Agent:
         t0 = time.perf_counter()
         final = self.graph.invoke(state, config={"recursion_limit": 2 * self.max_iterations + 4})
         latency = (time.perf_counter() - t0) * 1000
+        answer, verdict = final.get("answer") or "", "off"
+        if self.use_guard:
+            answer, verdict = output_guard(answer, final.get("sources") or [], self.tools.seen_ids,
+                                           self.tools.contexts, SYSTEM_PROMPT)
         return {
             "question": question,
-            "answer": final.get("answer") or "",
+            "answer": answer,
+            "guard": verdict,
             "sources": final.get("sources") or [],
             "terminated_by": final.get("terminated_by"),
             "iterations": final["iterations"],

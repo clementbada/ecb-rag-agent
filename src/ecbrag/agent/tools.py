@@ -38,7 +38,8 @@ TOOL_SCHEMAS: list[dict] = [
         "description": (
             "Look up the speech catalogue (metadata only: date, speaker, title, doc id). Use it to count "
             "speeches, find the latest speech of someone, or find a speech by its title. "
-            "Set group_by_speaker=true to get the number of speeches per speaker."),
+            "Set group_by_speaker=true to get the number of speeches per speaker. "
+            "Cite catalogue results as [catalogue] or by their doc id."),
         "parameters": {"type": "object", "properties": {
             "speaker": {"type": "string", "description": "Optional speaker surname."},
             "date_from": {"type": "string", "description": "Optional lower date bound, YYYY-MM-DD."},
@@ -178,6 +179,7 @@ class ToolBox:
         head = f"{len(rows)} speech(es) match (catalogue covers {self.docs[0]['date']} to {self.docs[-1]['date']})."
         if group_by_speaker:
             counts = Counter(s.strip() for d in rows for s in d["speakers"].split(","))
+            self.seen_ids.add("catalogue")
             out = head + "\nSpeeches per speaker:\n" + "\n".join(f"- {s}: {n}" for s, n in counts.most_common())
             self.contexts[f"catalogue:{len(self.contexts)}"] = out
             return out
