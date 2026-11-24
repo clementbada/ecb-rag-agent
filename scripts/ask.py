@@ -37,6 +37,8 @@ def main() -> None:
         if step["type"] == "llm":
             print(f"  LLM  iter={step['iteration']} in={step['tokens_in']} out={step['tokens_out']} "
                   f"{step['latency_ms']:.0f}ms tool_calls={step['n_tool_calls']}")
+        elif step["type"] == "nudge":
+            print(f"  NUDGE iter={step['iteration']} plain-text answer -> asked for final_answer")
         else:
             print(f"  TOOL {step['name']}({step['arguments'][:70]}) -> {step['status']} {step['latency_ms']:.0f}ms")
     print("-" * 80)

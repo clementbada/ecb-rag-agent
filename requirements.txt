@@ -1,13 +1,13 @@
-openai>=1.40
-pydantic>=2.6
-numpy>=1.26
-pandas>=2.1
-tabulate>=0.9
-faiss-cpu>=1.8
-rank-bm25>=0.2.2
-langgraph>=0.2
-python-dotenv>=1.0
-tqdm>=4.66
-langfuse>=2.50
-streamlit>=1.35
-pytest>=8.0
+# Pinned for reproducible evaluation numbers (tested with Python 3.11 and 3.13).
+openai==3.58.0
+pydantic==2.14.4
+numpy==2.4.6
+pandas==3.1.1
+tabulate==0.10.0
+faiss-cpu==1.16.0
+rank-bm25==0.2.2
+langgraph==1.2.24
+python-dotenv==1.2.4
+langfuse==5.2.0
+streamlit==1.67.0
+pytest==9.2.0

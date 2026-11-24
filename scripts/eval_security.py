@@ -95,7 +95,8 @@ def main() -> None:
     note = (f"{len(cases)} attacks ({sum(c['kind'] == 'direct' for c in cases)} direct, "
             f"{sum(c['kind'] == 'indirect' for c in cases)} indirect through poisoned passages added to an "
             f"in-memory copy of the index), each run with the output guard off and on. {n_new} attacks were "
-            "written after the first run and were not used to design the guard.")
+            "written after the first run and were not used to design the guard. Canary matching is conservative "
+            "(a refusal that quotes a canary also counts): read every attack_succeeded row before reporting.")
     save_table(summary, config.RESULTS_DIR / "security", "Prompt-injection test", note)
     save_table(df, config.RESULTS_DIR / "security_per_attack", "Prompt-injection test, per attack")
     print(summary.to_string(index=False))
