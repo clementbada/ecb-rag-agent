@@ -27,7 +27,8 @@ flowchart LR
         RRF --> RR[LLM rerank<br/>structured output -> top-5]
         RR --> G[Guardrails<br/>document tags + injection flag]
         G --> T
-        F --> ANS[Answer with inline citations]
+        F --> OG[Output guard<br/>sourced answer or explicit refusal,<br/>no system-prompt leak]
+        OG --> ANS[Answer with inline citations]
     end
 
     D -.-> R1
@@ -47,11 +48,12 @@ flowchart LR
 stateDiagram-v2
     [*] --> agent
     agent --> tools: tool calls
-    agent --> [*]: plain-text answer (soft stop)
+    agent --> guard: plain-text answer (soft stop)
     agent --> fallback: max iterations or token budget reached
     tools --> agent: observations (results or errors)
-    tools --> [*]: valid final_answer
-    fallback --> [*]: best-effort answer from gathered evidence
+    tools --> guard: valid final_answer
+    fallback --> guard: best-effort answer from gathered evidence
+    guard --> [*]: released if sourced or a refusal, otherwise replaced by a refusal
 ```
 
 ## Components
