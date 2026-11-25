@@ -156,6 +156,20 @@ model twice wrote the tool call as plain text (`final_answer()` in s01, s07) ins
 
 **Indexing** — 500 speeches, 3 variants, 9.2M embedding tokens, $0.92 in total, 16 minutes.
 
+### Demo
+
+*Correct answer with sources* (Lagarde, January 2026 inflation: 1.7%)
+
+![Agent answer with sources](docs/demo-answer.png)
+
+*Observed temporal failure* (January → May 2026: the agent confuses speech dates with data periods and never searches May)
+
+![Temporal failure](docs/demo-temporal-failure.png)
+
+*Langfuse trace* (one agent run: LLM calls, embedding, tokens, cost, latency)
+
+![Langfuse trace](docs/langfuse-trace.jpg)
+
 ## 6. Failure handling and security
 
 | Failure mode | Mitigation |
