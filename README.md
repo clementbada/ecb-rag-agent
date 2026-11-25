@@ -172,6 +172,10 @@ model twice wrote the tool call as plain text (`final_answer()` in s01, s07) ins
 
 ## 6. Failure handling and security
 
+Full write-up of the prompt-injection test: [`docs/security.md`](docs/security.md).
+
+Full write-up of the prompt-injection test: [`docs/security.md`](docs/security.md).
+
 | Failure mode | Mitigation |
 |---|---|
 | Infinite loop | `final_answer` tool + max 8 iterations + 60k-token budget + repeated-call detection; when a bound fires, one last call without tools salvages an answer from the evidence, and only the ids it cites that a tool returned are shown as sources |
