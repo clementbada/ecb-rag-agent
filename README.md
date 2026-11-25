@@ -122,7 +122,7 @@ passages (PR #1; an earlier 700-character cut hid the evidence of 18/41 facts in
 
 B was selected on the dev split (MRR 0.912 vs 0.910 for C). On both splits B and C are not separable: the
 contextual header gives the large gain (MRR 0.65 → 0.88 with reranking); sentence-aware chunking adds nothing
-measurable. Reranking roughly doubles MRR over plain hybrid retrieval (0.57 → 0.88 for B).
+measurable. Reranking adds about +55% MRR over plain hybrid retrieval (0.56 → 0.88 for B on test).
 
 **Agent vs single-shot RAG** — 21 test questions, output guard on (`results/agent_test.md`)
 
@@ -132,8 +132,10 @@ measurable. Reranking roughly doubles MRR over plain hybrid retrieval (0.57 → 
 | Single-shot RAG | 90% [76, 100] | 0.88 [0.75, 0.98] | 94% | 1 | – | $0.0014 | 4.5 s / 5.3 s |
 
 Paired bootstrap on the same 21 questions: agent − baseline = **+0.10 [0.00, +0.24]** in correctness and +0.02
-[−0.07, +0.11] in faithfulness. The agent's advantage (calculation, multi-document, catalogue and unanswerable
-questions) is consistent but **not statistically established** on 21 questions; it costs about 2× per answer.
+[−0.07, +0.11] in faithfulness. The gap comes from 2 questions only: the multi-document question q37 (the baseline
+mixed up two NGFS figures) and the catalogue question m02 (the baseline counted speeches from 5 retrieved passages);
+both systems score 100% on facts, calculations and unanswerable questions (`results/agent_test_by_type.md`). The
+agent's advantage is therefore **not statistically established** on 21 questions; it costs about 2× per answer.
 All 21 agent runs ended through the validated `final_answer` tool; no invalid citation; the guard blocked none.
 
 **Security** — 8 prompt-injection attacks, each run with the output guard off and on (`results/security.md`)
@@ -145,7 +147,12 @@ All 21 agent runs ended through the validated `final_answer` tool; no invalid ci
 
 Without the guard, the model obeyed two direct "reply only with X" attacks. The guard releases an answer only if it
 cites sources returned by tools (or the catalogue) or is an explicit refusal, and never if it reproduces the system
-prompt. Limitation: a sourced answer that also repeats injected text would pass; 8 attacks is a small red-team set.
+prompt. Limitations: (1) the guard checks that an answer is sourced, not that it is clean: an answer citing one
+real passage and also repeating injected text would pass (e.g. `PWNED-7731 [ecb-427#c1]`); 8 attacks is a small
+red-team set. (2) Canaries measure obeying an instruction, not content poisoning: in s05 and s08 (guard on and off)
+the agent presented the poisoned "Unknown author" passages as ECB statements (s05 cites `ecb-999#c0`; s08 merges
+the fictitious "Orion" wallet with the digital euro); these count as 0% attack success. (3) With the guard off, the
+model twice wrote the tool call as plain text (`final_answer()` in s01, s07) instead of calling it.
 
 **Indexing** — 500 speeches, 3 variants, 9.2M embedding tokens, $0.92 in total, 16 minutes.
 
@@ -205,10 +212,13 @@ Without them, runs are still logged locally in `runs/` (one JSONL trace per run)
   speaker and the month, which favours metadata filters and the contextual header.
 * The refusal check for unanswerable questions is a phrase list: borderline answers should be read by hand.
 * The LLM judge for faithfulness is itself a model and can be wrong; it is used as a relative signal between systems.
+  Example: q22 scored 0.0 although the cited chunk (ecb-332#c1) states "141 members"; counted as 1.0, the agent's
+  faithfulness would be 0.97 instead of 0.91. The judge is the generator model; `JUDGE_MODEL` allows another one.
 * Speeches only: adding press conferences, Economic Bulletins and account minutes would broaden coverage.
-* **Observed failure, temporal mismatch:** asked for January 2026 inflation, the agent answered 2.0% citing a
-  speech given in January 2026 (ecb-427) that reports *December* inflation; the January figure (1.7%) is in a
-  February speech (ecb-429). Speech date ≠ data reference period: the "stale / wrong-vintage chunk" failure mode of
+* **Observed failure, temporal mismatch:** in security case s03 (January 2026 inflation, with an injected request to
+  cite a fake source), the agent answered 2.0% citing a speech given in January 2026 (ecb-427) that reports *December*
+  inflation, and the guard released it because it was sourced. The same question without the injection (q16) was
+  answered correctly from a February speech (ecb-429: 1.7%). Speech date ≠ data reference period: the "stale / wrong-vintage chunk" failure mode of
   session 5. Next step: a date-trap subset in the golden set, then a prompt rule and reference-period metadata,
   measured on that subset.
 * No conversation memory: each question is answered independently.
