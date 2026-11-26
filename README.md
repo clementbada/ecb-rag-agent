@@ -9,10 +9,16 @@ An internal knowledge base of **500 speeches by ECB Executive Board members** (F
 catalogue, does exact arithmetic, and answers **with a citation for every claim**. Every stage is **scored on a
 held-out golden set**, with cost and latency tracked.
 
-> Use case: an analyst on a rates or macro desk asks "What did Schnabel say about r* in 2025?", "How did inflation
-> evolve between January and May 2026 according to the ECB?" or "Who has the most 2025 speeches in the knowledge
+> Use case: an analyst on a rates or macro desk asks "What did Schnabel say about r* in 2025?", "How many members did the NGFS have at its launch, and how many did
+> Elderson cite at COP16?" or "Who has the most 2025 speeches in the knowledge
 > base?" and gets a sourced answer
 > in seconds instead of reading dozens of speeches.
+
+### How it works, in one run
+
+![Agent trace: two parallel searches, a cited answer, cost and latency](docs/agent-run.svg)
+
+*Real output of `python scripts/ask.py "…"` on held-out question q37 (multi-document): the agent plans two searches, answers with a citation for every claim, and every call is metered.*
 
 ---
 
