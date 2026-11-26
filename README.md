@@ -226,6 +226,26 @@ Without them, runs are still logged locally in `runs/` (one JSONL trace per run)
 └── tests/                     Offline tests (pytest, run in GitHub Actions)
 ```
 
+### Code map: where each part lives
+
+| File | What it does | Key functions → what they return |
+|---|---|---|
+| [`src/ecbrag/config.py`](src/ecbrag/config.py) | All settings in one place | [`CHUNK_VARIANTS`](src/ecbrag/config.py#L44) (A/B/C), `TOP_K = 5`, `CANDIDATE_POOL = 20`, `RRF_K = 60`, `MAX_ITERATIONS = 8`, `MAX_RUN_TOKENS = 60_000` |
+| [`src/ecbrag/chunking.py`](src/ecbrag/chunking.py) | Cuts speeches into chunks | [`fixed_windows`](src/ecbrag/chunking.py#L13) / [`sentence_windows`](src/ecbrag/chunking.py#L40) → character spans; [`header_for`](src/ecbrag/chunking.py#L61) → "speaker — title (date)"; [`chunk_document`](src/ecbrag/chunking.py#L65) → list of chunks with id, text, spans, `index_text` |
+| [`src/ecbrag/index.py`](src/ecbrag/index.py) | FAISS + BM25 index, saved to and loaded from `indexes/<variant>` | [`HybridIndex`](src/ecbrag/index.py#L52); [`allowed`](src/ecbrag/index.py#L96) → row ids matching speaker/date filters; [`dense`](src/ecbrag/index.py#L109) / [`sparse`](src/ecbrag/index.py#L121) → `[(row_id, score)]` |
+| [`src/ecbrag/retrieval.py`](src/ecbrag/retrieval.py) | The retrieval funnel | [`rrf_fuse`](src/ecbrag/retrieval.py#L13) → fused ranking, score = Σ 1/(60 + rank); [`Retriever.rerank`](src/ecbrag/retrieval.py#L67) → top-k row ids from an LLM relevance score (Pydantic `RerankVerdict`); [`Retriever.search`](src/ecbrag/retrieval.py#L84) → top-5 chunks with metadata |
+| [`src/ecbrag/agent/tools.py`](src/ecbrag/agent/tools.py) | **The agent's tools** | [`TOOL_SCHEMAS`](src/ecbrag/agent/tools.py#L31) declares the 4 tools (JSON schemas sent to the model); [`validate_args`](src/ecbrag/agent/tools.py#L86) → (ok, args, error); [`search_speeches`](src/ecbrag/agent/tools.py#L163), `list_speeches`, `calculator` ([`safe_eval`](src/ecbrag/agent/tools.py#L130), AST-based, no `eval`), [`final_answer`](src/ecbrag/agent/tools.py#L213) rejects ids no tool returned; [`ToolBox.dispatch`](src/ecbrag/agent/tools.py#L237) → (observation, status, latency), never raises |
+| [`src/ecbrag/agent/graph.py`](src/ecbrag/agent/graph.py) | **The agent loop (LangGraph)** | [`SYSTEM_PROMPT`](src/ecbrag/agent/graph.py#L21); [`_agent_node`](src/ecbrag/agent/graph.py#L76) calls the LLM with the tools, stops at 8 iterations or 60k tokens; [`_tools_node`](src/ecbrag/agent/graph.py#L107) runs each tool call, counts hallucinated and repeated calls; [`_fallback`](src/ecbrag/agent/graph.py#L140) last call without tools; [`_build`](src/ecbrag/agent/graph.py#L168) wires agent ⇄ tools; [`Agent.run`](src/ecbrag/agent/graph.py#L178) → answer, sources, guard verdict, trace, tokens, cost, latency |
+| [`src/ecbrag/guardrails.py`](src/ecbrag/guardrails.py) | Prompt-injection defences | [`wrap_document`](src/ecbrag/guardrails.py#L37) → passage inside `<document>` tags; [`looks_like_injection`](src/ecbrag/guardrails.py#L28) → bool; [`leaks_prompt`](src/ecbrag/guardrails.py#L69) → bool (8-word n-grams); [`output_guard`](src/ecbrag/guardrails.py#L74) → (answer, "pass" or "blocked:…") |
+| [`src/ecbrag/llm.py`](src/ecbrag/llm.py) | LLM client (OpenRouter) and cost meter | [`LLM`](src/ecbrag/llm.py#L99): `chat` (tool calling), `chat_parse` (structured output), `embed`, retries with backoff; [`Meter`](src/ecbrag/llm.py#L80) → tokens and USD |
+| [`src/ecbrag/metrics.py`](src/ecbrag/metrics.py) | Evaluation metrics | [`gold_chunk_ids`](src/ecbrag/metrics.py#L27), [`recall_at_k`](src/ecbrag/metrics.py#L47), [`precision_at_k`](src/ecbrag/metrics.py#L51), [`mrr`](src/ecbrag/metrics.py#L55), [`is_correct`](src/ecbrag/metrics.py#L123), [`faithfulness`](src/ecbrag/metrics.py#L171) (LLM judge) |
+| [`src/ecbrag/reporting.py`](src/ecbrag/reporting.py) | Tables and confidence intervals | [`bootstrap_ci`](src/ecbrag/reporting.py#L42), [`paired_bootstrap_diff`](src/ecbrag/reporting.py#L53) |
+
+**One question through the code:** `scripts/ask.py` → `build_agent()` loads the index chosen on dev →
+`Agent.run()` → `_agent_node` (the LLM picks a tool) → `_tools_node` → `ToolBox.dispatch` → `validate_args` →
+`search_speeches` → `Retriever.search` (filters → FAISS + BM25 → `rrf_fuse` → `rerank`) → `wrap_document` →
+back to `_agent_node` → `final_answer` (citation check) → `output_guard` → answer.
+
 ## 9. Limitations and next steps
 
 * FAISS is in-memory; a production deployment would use pgvector (persistence, SQL filters, hybrid search in one query).
